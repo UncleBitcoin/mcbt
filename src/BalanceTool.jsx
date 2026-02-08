@@ -738,9 +738,25 @@ export default function BalanceTool() {
         try {
           tronWeb.setAddress(q.holderAddress)
         } catch {}
-        const contract = await tronWeb.contract().at(q.tokenAddress)
+        
+        let contract
+        try {
+          contract = await tronWeb.contract().at(q.tokenAddress)
+        } catch (err) {
+          throw new Error(`合约初始化失败: ${err?.message || '未知错误'}`)
+        }
 
-        const balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
+        let balanceRaw
+        try {
+          balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
+        } catch (err) {
+           // 详细错误捕获
+           console.error('TRON balanceOf error:', err)
+           if (typeof err === 'object' && Object.keys(err).length === 0) {
+             throw new Error('网络请求失败 (可能跨域/404/Empty Error)')
+           }
+           throw new Error(`余额查询失败: ${err?.message || JSON.stringify(err)}`)
+        }
 
         const [decimalsTron, symbolTron, nameTron] = await Promise.all([
           q.decimals != null ? Promise.resolve(q.decimals) : contract.methods.decimals().call().catch(() => null),
