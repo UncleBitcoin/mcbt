@@ -244,37 +244,6 @@ function encodeTronAddressParameter(tronWeb, addressBase58OrHex41) {
   return hex.padStart(64, '0')
 }
 
-async function tronTriggerConstant({ rpcUrl, tronProApiKey, contractAddress, ownerAddress, functionSelector, parameter }) {
-  const base = normalizeRpcUrl(rpcUrl).replace(/\/+$/, '')
-  const url = `${base}/wallet/triggersmartcontract`
-  const headers = { 'Content-Type': 'application/json' }
-  if (tronProApiKey) headers['TRON-PRO-API-KEY'] = tronProApiKey
-
-  const payload = {
-    contract_address: contractAddress,
-    function_selector: functionSelector,
-    parameter,
-    owner_address: ownerAddress,
-    visible: true,
-  }
-
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`TRON RPC HTTP ${res.status}: ${text.slice(0, 220)}`)
-
-  let json
-  try {
-    json = JSON.parse(text)
-  } catch {
-    throw new Error(`TRON RPC 返回非 JSON: ${text.slice(0, 220)}`)
-  }
-
-  if (json?.Error) throw new Error(String(json.Error))
-  const hexResult = json?.constant_result?.[0]
-  if (!hexResult) throw new Error('TRON 查询无返回 constant_result')
-  return normalizeHexNo0x(hexResult)
-}
-
 function getExplorerLink(chainType, explorer, kind, value) {
   if (!explorer) return ''
   if (!value) return ''
@@ -323,6 +292,18 @@ function sendNotification(title, body) {
   if (Notification.permission !== 'granted') return
   try {
     new Notification(title, { body })
+  } catch {}
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return
+  try {
+    // 停止之前的播报
+    window.speechSynthesis.cancel()
+    const msg = new SpeechSynthesisUtterance(text)
+    msg.lang = 'zh-CN'
+    msg.rate = 1.0
+    window.speechSynthesis.speak(msg)
   } catch {}
 }
 
@@ -733,9 +714,11 @@ export default function BalanceTool() {
     }
 
     const alerting = cfg.direction === 'above' ? balanceBN.gt(thresholdBN) : balanceBN.lt(thresholdBN)
-    const lastAlerting = lastAlertStateRef.current.get(id) || false
+    // 之前逻辑：triggered = alerting && !lastAlerting
+    // 新逻辑：只要满足条件就触发报警（triggered = alerting）
+    const triggered = alerting 
     lastAlertStateRef.current.set(id, alerting)
-    return { alerting, triggered: alerting && !lastAlerting }
+    return { alerting, triggered }
   }
 
   const fetchOne = async id => {
@@ -757,22 +740,15 @@ export default function BalanceTool() {
         } catch {}
         const contract = await tronWeb.contract().at(q.tokenAddress)
 
-        const balanceHex = await tronTriggerConstant({
-          rpcUrl: q.rpcUrl,
-          tronProApiKey: q.tronProApiKey,
-          contractAddress: q.tokenAddress,
-          ownerAddress: q.holderAddress,
-          functionSelector: 'balanceOf(address)',
-          parameter: encodeTronAddressParameter(tronWeb, q.holderAddress),
-        })
+        const balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
 
         const [decimalsTron, symbolTron, nameTron] = await Promise.all([
-          q.decimals != null ? Promise.resolve(q.decimals) : contract.decimals().call().catch(() => null),
-          q.symbolResolved ? Promise.resolve(q.symbolResolved) : contract.symbol().call().catch(() => null),
-          q.nameResolved ? Promise.resolve(q.nameResolved) : contract.name().call().catch(() => null),
+          q.decimals != null ? Promise.resolve(q.decimals) : contract.methods.decimals().call().catch(() => null),
+          q.symbolResolved ? Promise.resolve(q.symbolResolved) : contract.methods.symbol().call().catch(() => null),
+          q.nameResolved ? Promise.resolve(q.nameResolved) : contract.methods.name().call().catch(() => null),
         ])
 
-        balanceBN = ethers.BigNumber.from(`0x${balanceHex || '0'}`)
+        balanceBN = ethers.BigNumber.from(balanceRaw.toString())
         decimalsRaw = decimalsTron
         symbolRaw = symbolTron
         nameRaw = nameTron
@@ -813,7 +789,10 @@ export default function BalanceTool() {
       }))
 
       if (triggered) {
-        playBeep()
+        // playBeep()
+        const directionText = q.alert.direction === 'above' ? '高于' : '低于'
+        const alertMsg = `警报，${q.projectName || DEFAULT_PROJECT_NAME}，${q.chainName}，${symbolResolved}，报警：余额${directionText} ${q.alert.threshold}`
+        speak(alertMsg)
         sendNotification('余额报警', `${q.chainName} ${symbolResolved} ${formatBalance(balanceStr, symbolResolved)}\n${shortAddress(q.holderAddress)}`)
       }
     } catch (e) {
@@ -1034,6 +1013,9 @@ export default function BalanceTool() {
           </button>
           <button className="mcbt-btn mcbt-btn-secondary" onClick={() => ensureNotificationPermission()}>
             允许通知
+          </button>
+          <button className="mcbt-btn mcbt-btn-secondary" onClick={() => speak('语音播报测试，系统正常')}>
+            测试语音
           </button>
         </div>
       </div>
