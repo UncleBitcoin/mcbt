@@ -183,7 +183,7 @@ function normalizeRpcUrl(s) {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
     const url = new URL(raw, base)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
-    return url.toString()
+    return url.toString().replace(/\/+$/, '')
   } catch {
     return ''
   }
@@ -398,10 +398,12 @@ export default function BalanceTool() {
     const chainType = c.chainType === 'TRON' ? 'TRON' : 'EVM'
     const name = typeof c.name === 'string' && c.name.trim() ? c.name.trim() : key
     const rpcUrl = typeof c.rpcUrl === 'string' ? c.rpcUrl.trim() : ''
+    // 移除末尾斜杠
+    const rpcUrlClean = rpcUrl.replace(/\/+$/, '')
     const explorer = typeof c.explorer === 'string' ? c.explorer.trim() : ''
     const chainId = chainType === 'EVM' ? (Number.isFinite(Number(c.chainId)) ? Number(c.chainId) : undefined) : undefined
     const tronProApiKey = chainType === 'TRON' ? (typeof c.tronProApiKey === 'string' ? c.tronProApiKey : '') : ''
-    return { key, name, chainType, chainId, rpcUrl, explorer, tronProApiKey }
+    return { key, name, chainType, chainId, rpcUrl: rpcUrlClean, explorer, tronProApiKey }
   }
 
   const sanitizeQuery = q => {
@@ -747,16 +749,42 @@ export default function BalanceTool() {
         }
 
         let balanceRaw
-        try {
-          balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
-        } catch (err) {
-           // 详细错误捕获
-           console.error('TRON balanceOf error:', err)
-           if (typeof err === 'object' && Object.keys(err).length === 0) {
-             throw new Error('网络请求失败 (可能跨域/404/Empty Error)')
-           }
-           throw new Error(`余额查询失败: ${err?.message || JSON.stringify(err)}`)
-        }
+         try {
+           balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
+         } catch (err) {
+            console.error('TRON balanceOf error (TronWeb):', err)
+            
+            // 降级方案：如果 TronWeb 失败，尝试直接使用 fetch 调用 triggerconstantcontract
+            try {
+              const parameter = encodeTronAddressParameter(tronWeb, q.holderAddress)
+              const fallbackUrl = `${q.rpcUrl.replace(/\/+$/, '')}/wallet/triggerconstantcontract`
+              const headers = { 'Content-Type': 'application/json' }
+              if (q.tronProApiKey) headers['TRON-PRO-API-KEY'] = q.tronProApiKey
+              
+              const payload = {
+                contract_address: normalizeTronAddress(q.tokenAddress),
+                function_selector: 'balanceOf(address)',
+                parameter,
+                owner_address: normalizeTronAddress(q.holderAddress),
+                visible: true,
+              }
+              
+              const res = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(payload) })
+              const json = await res.json()
+              if (json.result && json.result.result === true && json.constant_result && json.constant_result[0]) {
+                balanceRaw = ethers.BigNumber.from('0x' + json.constant_result[0])
+              } else {
+                throw new Error(json?.Error || 'Fallback query failed')
+              }
+            } catch (fallbackErr) {
+               console.error('TRON balanceOf error (Fallback):', fallbackErr)
+               // 如果降级也失败，抛出原始错误或合并错误
+               if (typeof err === 'object' && Object.keys(err).length === 0) {
+                 throw new Error('网络请求失败 (可能跨域/404/Empty Error)')
+               }
+               throw new Error(`余额查询失败: ${err?.message || JSON.stringify(err)}`)
+            }
+         }
 
         const [decimalsTron, symbolTron, nameTron] = await Promise.all([
           q.decimals != null ? Promise.resolve(q.decimals) : contract.methods.decimals().call().catch(() => null),
