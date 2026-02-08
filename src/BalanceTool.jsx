@@ -745,13 +745,14 @@ export default function BalanceTool() {
         try {
           contract = await tronWeb.contract().at(q.tokenAddress)
         } catch (err) {
-          throw new Error(`合约初始化失败: ${err?.message || '未知错误'}`)
+          console.warn('合约初始化失败 (可能网络问题)，尝试降级模式:', err)
         }
 
         let balanceRaw
-         try {
+        try {
+           if (!contract) throw new Error('Contract not initialized')
            balanceRaw = await contract.methods.balanceOf(q.holderAddress).call()
-         } catch (err) {
+        } catch (err) {
             console.error('TRON balanceOf error (TronWeb):', err)
             
             // 降级方案：如果 TronWeb 失败，尝试直接使用 fetch 调用 triggerconstantcontract
@@ -784,12 +785,12 @@ export default function BalanceTool() {
                }
                throw new Error(`余额查询失败: ${err?.message || JSON.stringify(err)}`)
             }
-         }
+        }
 
         const [decimalsTron, symbolTron, nameTron] = await Promise.all([
-          q.decimals != null ? Promise.resolve(q.decimals) : contract.methods.decimals().call().catch(() => null),
-          q.symbolResolved ? Promise.resolve(q.symbolResolved) : contract.methods.symbol().call().catch(() => null),
-          q.nameResolved ? Promise.resolve(q.nameResolved) : contract.methods.name().call().catch(() => null),
+          q.decimals != null ? Promise.resolve(q.decimals) : (contract ? contract.methods.decimals().call().catch(() => null) : null),
+          q.symbolResolved ? Promise.resolve(q.symbolResolved) : (contract ? contract.methods.symbol().call().catch(() => null) : null),
+          q.nameResolved ? Promise.resolve(q.nameResolved) : (contract ? contract.methods.name().call().catch(() => null) : null),
         ])
 
         balanceBN = ethers.BigNumber.from(balanceRaw.toString())
