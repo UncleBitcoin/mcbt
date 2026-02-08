@@ -930,7 +930,9 @@ export default function BalanceTool() {
       const debugEl = document.getElementById('debug-log')
       if (debugEl) {
           const logLine = document.createElement('div')
-          logLine.textContent = `[${nowZh()}] ${q.chainName} ${symbolResolved}: ${balanceStr} (Alert: ${triggered})`
+          const alertInfo = `En:${q.alert.enabled} Dir:${q.alert.direction} Thr:${q.alert.threshold}`
+          logLine.textContent = `[${nowZh()}] ${q.chainName} ${symbolResolved}: ${balanceStr} | ${alertInfo} | Trig:${triggered}`
+          if (triggered) logLine.style.color = 'red'
           debugEl.prepend(logLine)
           if (debugEl.children.length > 20) debugEl.lastChild.remove()
       }
