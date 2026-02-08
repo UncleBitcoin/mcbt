@@ -121,7 +121,7 @@ const DEFAULT_CHAINS = [
     key: 'TRON',
     name: 'TRON',
     chainType: 'TRON',
-    rpcUrl: '/tron',
+    rpcUrl: 'https://api.trongrid.io',
     explorer: 'https://tronscan.org',
     tronProApiKey: '',
   },
@@ -605,7 +605,7 @@ export default function BalanceTool() {
         if (c.chainType !== chainType) changed = true
         if (c.key === 'TRON') {
           const rpcUrl = c.rpcUrl || ''
-          const nextRpcUrl = rpcUrl === 'https://api.trongrid.io' || rpcUrl === 'http://api.trongrid.io' || rpcUrl === '' ? '/tron' : rpcUrl
+          const nextRpcUrl = rpcUrl === '/tron' ? 'https://api.trongrid.io' : rpcUrl
           const tronProApiKey = c.tronProApiKey || ''
           if (nextRpcUrl !== rpcUrl) changed = true
           if (tronProApiKey !== c.tronProApiKey) changed = true
@@ -631,8 +631,8 @@ export default function BalanceTool() {
         const chainType = q.chainType || (q.chainKey === 'TRON' ? 'TRON' : 'EVM')
         const rpcUrl = q.rpcUrl || ''
         const nextRpcUrl =
-          chainType === 'TRON' && (rpcUrl === 'https://api.trongrid.io' || rpcUrl === 'http://api.trongrid.io' || rpcUrl === '')
-            ? '/tron'
+          chainType === 'TRON' && (rpcUrl === '/tron' || rpcUrl === '')
+            ? 'https://api.trongrid.io'
             : rpcUrl
         const holderAddress = chainType === 'TRON' ? normalizeTronAddress(q.holderAddress || '') : q.holderAddress
         const tokenAddress = chainType === 'TRON' ? normalizeTronAddress(q.tokenAddress || '') : q.tokenAddress
@@ -837,7 +837,7 @@ export default function BalanceTool() {
         : token.toLowerCase() === preset.address.toLowerCase())
     const projectName = ensureProject(selectedProjectName)
 
-    if (!isRpcUrl(rpc)) return setFormError('RPC URL 需要是 http/https 地址，或使用 /tron 代理路径')
+    if (!isRpcUrl(rpc)) return setFormError('RPC URL 需要是 http/https 地址')
 
     let holderNormalized = holder
     let tokenNormalized = token
