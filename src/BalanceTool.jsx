@@ -121,7 +121,7 @@ const DEFAULT_CHAINS = [
     key: 'TRON',
     name: 'TRON',
     chainType: 'TRON',
-    rpcUrl: 'https://api.trongrid.io',
+    rpcUrl: '/tron',
     explorer: 'https://tronscan.org',
     tronProApiKey: '',
   },
@@ -308,6 +308,7 @@ function speak(text) {
 }
 
 const TRON_RPC_LIST = [
+  '/tron',
   'https://api.trongrid.io',
   'https://api.tronstack.io',
 ]
@@ -612,7 +613,7 @@ export default function BalanceTool() {
         if (c.chainType !== chainType) changed = true
         if (c.key === 'TRON') {
           const rpcUrl = c.rpcUrl || ''
-          const nextRpcUrl = rpcUrl === '/tron' ? 'https://api.trongrid.io' : rpcUrl
+          const nextRpcUrl = rpcUrl === 'https://api.trongrid.io' || rpcUrl === '' ? '/tron' : rpcUrl
           const tronProApiKey = c.tronProApiKey || ''
           if (nextRpcUrl !== rpcUrl) changed = true
           if (tronProApiKey !== c.tronProApiKey) changed = true
@@ -638,8 +639,8 @@ export default function BalanceTool() {
         const chainType = q.chainType || (q.chainKey === 'TRON' ? 'TRON' : 'EVM')
         const rpcUrl = q.rpcUrl || ''
         const nextRpcUrl =
-          chainType === 'TRON' && (rpcUrl === '/tron' || rpcUrl === '')
-            ? 'https://api.trongrid.io'
+          chainType === 'TRON' && (rpcUrl === 'https://api.trongrid.io' || rpcUrl === '')
+            ? '/tron'
             : rpcUrl
         const holderAddress = chainType === 'TRON' ? normalizeTronAddress(q.holderAddress || '') : q.holderAddress
         const tokenAddress = chainType === 'TRON' ? normalizeTronAddress(q.tokenAddress || '') : q.tokenAddress
