@@ -307,6 +307,11 @@ function speak(text) {
   } catch {}
 }
 
+const TRON_RPC_LIST = [
+  'https://api.trongrid.io',
+  'https://api.tronstack.io',
+]
+
 export default function BalanceTool() {
   const [chains, setChains] = useLocalStorageState('mcbt:chains', DEFAULT_CHAINS)
   const [queries, setQueries] = useLocalStorageState('mcbt:queries', [])
@@ -756,32 +761,48 @@ export default function BalanceTool() {
             console.error('TRON balanceOf error (TronWeb):', err)
             
             // 降级方案：如果 TronWeb 失败，尝试直接使用 fetch 调用 triggerconstantcontract
-            try {
-              const parameter = encodeTronAddressParameter(tronWeb, q.holderAddress)
-              const fallbackUrl = `${q.rpcUrl.replace(/\/+$/, '')}/wallet/triggerconstantcontract`
-              const headers = { 'Content-Type': 'application/json' }
-              if (q.tronProApiKey) headers['TRON-PRO-API-KEY'] = q.tronProApiKey
-              
-              const payload = {
-                contract_address: normalizeTronAddress(q.tokenAddress),
-                function_selector: 'balanceOf(address)',
-                parameter,
-                owner_address: normalizeTronAddress(q.holderAddress),
-                visible: true,
-              }
-              
-              const res = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(payload) })
-              const json = await res.json()
-              if (json.result && json.result.result === true && json.constant_result && json.constant_result[0]) {
-                balanceRaw = ethers.BigNumber.from('0x' + json.constant_result[0])
-              } else {
-                throw new Error(json?.Error || 'Fallback query failed')
-              }
-            } catch (fallbackErr) {
-               console.error('TRON balanceOf error (Fallback):', fallbackErr)
+            // 尝试多个 RPC 节点
+            const primaryRpc = q.rpcUrl.replace(/\/+$/, '')
+            const rpcList = [primaryRpc, ...TRON_RPC_LIST].filter((v, i, a) => v && a.indexOf(v) === i)
+            
+            let lastFallbackErr = null
+            let success = false
+
+            for (const rpcBase of rpcList) {
+               try {
+                  const parameter = encodeTronAddressParameter(tronWeb, q.holderAddress)
+                  const fallbackUrl = `${rpcBase}/wallet/triggerconstantcontract`
+                  const headers = { 'Content-Type': 'application/json' }
+                  if (q.tronProApiKey) headers['TRON-PRO-API-KEY'] = q.tronProApiKey
+                  
+                  const payload = {
+                    contract_address: normalizeTronAddress(q.tokenAddress),
+                    function_selector: 'balanceOf(address)',
+                    parameter,
+                    owner_address: normalizeTronAddress(q.holderAddress),
+                    visible: true,
+                  }
+                  
+                  const res = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(payload) })
+                  const json = await res.json()
+                  if (json.result && json.result.result === true && json.constant_result && json.constant_result[0]) {
+                    balanceRaw = ethers.BigNumber.from('0x' + json.constant_result[0])
+                    success = true
+                    break // 成功则退出循环
+                  } else {
+                    throw new Error(json?.Error || `Fallback query failed on ${rpcBase}`)
+                  }
+               } catch (e) {
+                  console.warn(`Fallback RPC failed: ${rpcBase}`, e)
+                  lastFallbackErr = e
+               }
+            }
+
+            if (!success) {
+               console.error('All TRON fallback RPCs failed')
                // 如果降级也失败，抛出原始错误或合并错误
                if (typeof err === 'object' && Object.keys(err).length === 0) {
-                 throw new Error('网络请求失败 (可能跨域/404/Empty Error)')
+                 throw new Error(`网络请求失败 (所有节点均尝试失败, Last: ${lastFallbackErr?.message || 'Unknown'})`)
                }
                throw new Error(`余额查询失败: ${err?.message || JSON.stringify(err)}`)
             }
