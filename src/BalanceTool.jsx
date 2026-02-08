@@ -775,6 +775,9 @@ export default function BalanceTool() {
       return { alerting: false, triggered: false }
     }
 
+    // 增加调试日志
+    console.log(`[Alert Check] ID:${id} Dir:${cfg.direction} Bal:${ethers.utils.formatUnits(balanceBN, decimals)} Thr:${cfg.threshold}`)
+
     const alerting = cfg.direction === 'above' ? balanceBN.gt(thresholdBN) : balanceBN.lt(thresholdBN)
     // 之前逻辑：triggered = alerting && !lastAlerting
     // 新逻辑：只要满足条件就触发报警（triggered = alerting）
@@ -922,6 +925,15 @@ export default function BalanceTool() {
 
       const balanceStr = ethers.utils.formatUnits(balanceBN, decimals)
       const { alerting, triggered } = evaluateAlert(id, balanceBN, decimals, q.alert)
+
+      // 增加调试面板显示
+      const debugEl = document.getElementById('debug-log')
+      if (debugEl) {
+          const logLine = document.createElement('div')
+          logLine.textContent = `[${nowZh()}] ${q.chainName} ${symbolResolved}: ${balanceStr} (Alert: ${triggered})`
+          debugEl.prepend(logLine)
+          if (debugEl.children.length > 20) debugEl.lastChild.remove()
+      }
 
       updateQuery(id, prev => ({
         loading: false,
@@ -1569,6 +1581,10 @@ export default function BalanceTool() {
             </div>
           )
         })}
+      </div>
+      <div style={{ marginTop: 24, padding: 12, border: '1px solid #ddd', maxHeight: 200, overflowY: 'auto', fontSize: 12, background: '#f9f9f9' }}>
+        <strong>Debug Log:</strong>
+        <div id="debug-log"></div>
       </div>
     </div>
   )
