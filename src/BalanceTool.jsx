@@ -783,10 +783,16 @@ export default function BalanceTool() {
     return { alerting, triggered }
   }
 
+  const queriesRef = useRef(queries)
+  useEffect(() => {
+    queriesRef.current = queries
+  }, [queries])
+
   const fetchOne = async id => {
-    const q = queries.find(x => x.id === id)
+    const q = queriesRef.current.find(x => x.id === id)
     if (!q) return
 
+    // ...
     updateQuery(id, { loading: true, error: '' })
 
     try {
@@ -913,6 +919,7 @@ export default function BalanceTool() {
         // playBeep()
         const directionText = q.alert.direction === 'above' ? '高于' : '低于'
         const alertMsg = `警报，${q.projectName || DEFAULT_PROJECT_NAME}，${q.chainName}，${symbolResolved}，报警：余额${directionText} ${q.alert.threshold}`
+        console.log('Triggering alert:', alertMsg)
         speak(alertMsg)
         sendNotification('余额报警', `${q.chainName} ${symbolResolved} ${formatBalance(balanceStr, symbolResolved)}\n${shortAddress(q.holderAddress)}`)
       }
