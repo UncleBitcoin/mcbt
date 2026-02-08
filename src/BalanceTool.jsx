@@ -295,16 +295,45 @@ function sendNotification(title, body) {
   } catch {}
 }
 
-function speak(text) {
-  if (!('speechSynthesis' in window)) return
+const speechQueue = []
+let isSpeaking = false
+
+function processQueue() {
+  if (isSpeaking || speechQueue.length === 0) return
+  
+  const text = speechQueue.shift()
+  isSpeaking = true
+  
   try {
-    // 停止之前的播报
-    window.speechSynthesis.cancel()
     const msg = new SpeechSynthesisUtterance(text)
     msg.lang = 'zh-CN'
     msg.rate = 1.0
+    msg.onend = () => {
+      isSpeaking = false
+      processQueue() // 播放下一条
+    }
+    msg.onerror = () => {
+      isSpeaking = false
+      processQueue() // 出错也继续下一条
+    }
     window.speechSynthesis.speak(msg)
-  } catch {}
+  } catch {
+    isSpeaking = false
+    processQueue()
+  }
+}
+
+function speak(text) {
+  if (!('speechSynthesis' in window)) return
+  // 如果队列太长（超过10条），清除旧的，避免播报延迟太久
+  if (speechQueue.length > 10) {
+    speechQueue.length = 0
+    window.speechSynthesis.cancel()
+    isSpeaking = false
+  }
+  
+  speechQueue.push(text)
+  processQueue()
 }
 
 const TRON_RPC_LIST = [
