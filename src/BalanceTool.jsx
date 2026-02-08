@@ -783,6 +783,34 @@ export default function BalanceTool() {
     return { alerting, triggered }
   }
 
+  // 辅助：通用 TRON 降级调用
+  const fetchTronFallback = async (rpcBase, tronProApiKey, contractAddress, selector, parameter, ownerAddress) => {
+    const fallbackUrl = `${rpcBase}/wallet/triggerconstantcontract`
+    const headers = { 'Content-Type': 'application/json' }
+    if (tronProApiKey) headers['TRON-PRO-API-KEY'] = tronProApiKey
+    
+    const payload = {
+      contract_address: normalizeTronAddress(contractAddress),
+      function_selector: selector,
+      parameter: parameter || '',
+      owner_address: normalizeTronAddress(ownerAddress || contractAddress), // 如果没有 owner，可以用 contract 代替（view call）
+      visible: true,
+    }
+    
+    const res = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(payload) })
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`)
+    }
+    const json = await res.json()
+    if (json.result && json.result.result === true && json.constant_result && json.constant_result[0]) {
+      return json.constant_result[0]
+    } else {
+      const msg = json?.result?.message ? TronWeb.toUtf8(json.result.message) : (json?.Error || 'Unknown error')
+      throw new Error(`Result false: ${msg}`)
+    }
+  }
+
   const queriesRef = useRef(queries)
   useEffect(() => {
     queriesRef.current = queries
@@ -832,27 +860,19 @@ export default function BalanceTool() {
             for (const rpcBase of rpcList) {
                try {
                   const parameter = encodeTronAddressParameter(tronWeb, q.holderAddress)
-                  const fallbackUrl = `${rpcBase}/wallet/triggerconstantcontract`
-                  const headers = { 'Content-Type': 'application/json' }
-                  if (q.tronProApiKey) headers['TRON-PRO-API-KEY'] = q.tronProApiKey
+                  const balanceHex = await fetchTronFallback(rpcBase, q.tronProApiKey, q.tokenAddress, 'balanceOf(address)', parameter, q.holderAddress)
+                  balanceRaw = ethers.BigNumber.from('0x' + balanceHex)
                   
-                  const payload = {
-                    contract_address: normalizeTronAddress(q.tokenAddress),
-                    function_selector: 'balanceOf(address)',
-                    parameter,
-                    owner_address: normalizeTronAddress(q.holderAddress),
-                    visible: true,
+                  // 顺便尝试获取 decimals (如果之前没有)
+                  if (decimalsRaw == null && q.decimals == null) {
+                      try {
+                          const decimalsHex = await fetchTronFallback(rpcBase, q.tronProApiKey, q.tokenAddress, 'decimals()', '', q.holderAddress)
+                          decimalsRaw = parseInt(decimalsHex, 16)
+                      } catch (e) { console.warn('Fallback decimals failed:', e) }
                   }
                   
-                  const res = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(payload) })
-                  const json = await res.json()
-                  if (json.result && json.result.result === true && json.constant_result && json.constant_result[0]) {
-                    balanceRaw = ethers.BigNumber.from('0x' + json.constant_result[0])
-                    success = true
-                    break // 成功则退出循环
-                  } else {
-                    throw new Error(json?.Error || `Fallback query failed on ${rpcBase}`)
-                  }
+                  success = true
+                  break // 成功则退出循环
                } catch (e) {
                   console.warn(`Fallback RPC failed: ${rpcBase}`, e)
                   lastFallbackErr = e
