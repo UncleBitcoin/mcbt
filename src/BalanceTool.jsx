@@ -1148,6 +1148,9 @@ export default function BalanceTool() {
     return { ordered, map, totals }
   }, [projects, queries])
 
+  const [isConfigExpanded, setIsConfigExpanded] = useState(false)
+  const [isCreateExpanded, setIsCreateExpanded] = useState(false)
+
   return (
     <div className="mcbt">
       <div className="mcbt-header">
@@ -1183,7 +1186,15 @@ export default function BalanceTool() {
       </div>
 
       <div className="mcbt-card">
-        <div className="mcbt-card-title">用户与配置</div>
+        <div 
+          className="mcbt-card-title" 
+          onClick={() => setIsConfigExpanded(!isConfigExpanded)}
+          style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span>用户与配置</span>
+          <span style={{ fontSize: '12px', color: '#666' }}>{isConfigExpanded ? '收起 ▲' : '展开 ▼'}</span>
+        </div>
+        {isConfigExpanded && (
         <div className="mcbt-form">
           <div className="mcbt-row mcbt-row-2">
             <div className="mcbt-field">
@@ -1244,11 +1255,21 @@ export default function BalanceTool() {
             清除浏览器缓存会清空本地数据。建议定期导出配置备份，或复制到剪贴板保存。
           </div>
         </div>
+        )}
       </div>
 
       <div className="mcbt-card">
-        <div className="mcbt-card-title">创建查询标签</div>
+        <div 
+          className="mcbt-card-title" 
+          onClick={() => setIsCreateExpanded(!isCreateExpanded)}
+          style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span>创建查询标签</span>
+          <span style={{ fontSize: '12px', color: '#666' }}>{isCreateExpanded ? '收起 ▲' : '展开 ▼'}</span>
+        </div>
 
+        {isCreateExpanded && (
+        <>
         {formError ? <div className="mcbt-error">{formError}</div> : null}
 
         <div className="mcbt-form">
@@ -1444,6 +1465,8 @@ export default function BalanceTool() {
             </div>
           ) : null}
         </div>
+        </>
+        )}
       </div>
 
       <div className="mcbt-list">
