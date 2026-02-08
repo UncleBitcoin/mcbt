@@ -121,7 +121,7 @@ const DEFAULT_CHAINS = [
     key: 'TRON',
     name: 'TRON',
     chainType: 'TRON',
-    rpcUrl: '/tron',
+    rpcUrl: 'https://api.trongrid.io',
     explorer: 'https://tronscan.org',
     tronProApiKey: '',
   },
@@ -299,45 +299,70 @@ const speechQueue = []
 let isSpeaking = false
 
 function processQueue() {
-  if (isSpeaking || speechQueue.length === 0) return
+  if (isSpeaking) return
+  if (speechQueue.length === 0) return
   
+  // 取出第一条
   const text = speechQueue.shift()
   isSpeaking = true
   
   try {
+    // 每次播放前先 cancel 之前的（虽然理论上串行不需要，但为了保险）
+    // 注意：不要在这里 cancel，否则会打断正在播放的
+    // window.speechSynthesis.cancel() 
+    
     const msg = new SpeechSynthesisUtterance(text)
     msg.lang = 'zh-CN'
     msg.rate = 1.0
+    
     msg.onend = () => {
       isSpeaking = false
-      processQueue() // 播放下一条
+      // 稍微延迟一下再播放下一条，避免连得太紧
+      setTimeout(() => processQueue(), 200)
     }
-    msg.onerror = () => {
+    
+    msg.onerror = (e) => {
+      console.warn('TTS Error:', e)
       isSpeaking = false
-      processQueue() // 出错也继续下一条
+      setTimeout(() => processQueue(), 200)
     }
+    
     window.speechSynthesis.speak(msg)
-  } catch {
+    
+    // 增加一个超时保护，防止 onend 不触发导致死锁
+    // 如果一条消息超过 15 秒还没读完，强制结束
+    setTimeout(() => {
+        if (isSpeaking) {
+            console.warn('TTS Timeout, forcing next')
+            window.speechSynthesis.cancel()
+            isSpeaking = false
+            processQueue()
+        }
+    }, 15000)
+    
+  } catch (e) {
+    console.error('TTS Exception:', e)
     isSpeaking = false
-    processQueue()
+    setTimeout(() => processQueue(), 200)
   }
 }
 
 function speak(text) {
   if (!('speechSynthesis' in window)) return
-  // 如果队列太长（超过10条），清除旧的，避免播报延迟太久
-  if (speechQueue.length > 10) {
-    speechQueue.length = 0
-    window.speechSynthesis.cancel()
-    isSpeaking = false
+  
+  // 如果队列太长，清空旧的，只留最新的 5 条，防止报警积压太久
+  if (speechQueue.length > 5) {
+     speechQueue.splice(0, speechQueue.length - 5)
   }
   
-  speechQueue.push(text)
-  processQueue()
+  // 只有当文本不为空且不重复时才加入（可选：防止连续重复播报同一句话）
+  if (text) {
+      speechQueue.push(text)
+      processQueue()
+  }
 }
 
 const TRON_RPC_LIST = [
-  '/tron',
   'https://api.trongrid.io',
   'https://api.tronstack.io',
 ]
@@ -642,7 +667,7 @@ export default function BalanceTool() {
         if (c.chainType !== chainType) changed = true
         if (c.key === 'TRON') {
           const rpcUrl = c.rpcUrl || ''
-          const nextRpcUrl = rpcUrl === 'https://api.trongrid.io' || rpcUrl === '' ? '/tron' : rpcUrl
+          const nextRpcUrl = rpcUrl === '/tron' ? 'https://api.trongrid.io' : rpcUrl
           const tronProApiKey = c.tronProApiKey || ''
           if (nextRpcUrl !== rpcUrl) changed = true
           if (tronProApiKey !== c.tronProApiKey) changed = true
@@ -668,8 +693,8 @@ export default function BalanceTool() {
         const chainType = q.chainType || (q.chainKey === 'TRON' ? 'TRON' : 'EVM')
         const rpcUrl = q.rpcUrl || ''
         const nextRpcUrl =
-          chainType === 'TRON' && (rpcUrl === 'https://api.trongrid.io' || rpcUrl === '')
-            ? '/tron'
+          chainType === 'TRON' && (rpcUrl === '/tron' || rpcUrl === '')
+            ? 'https://api.trongrid.io'
             : rpcUrl
         const holderAddress = chainType === 'TRON' ? normalizeTronAddress(q.holderAddress || '') : q.holderAddress
         const tokenAddress = chainType === 'TRON' ? normalizeTronAddress(q.tokenAddress || '') : q.tokenAddress
